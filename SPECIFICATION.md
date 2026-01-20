@@ -2,6 +2,11 @@
 
 > **A Universal Paradigm for Optimization as Energy Minimization**
 
+**Author**: Mark Amo-Boateng, PhD  
+**Affiliation**: Xtellix, Inc.  
+**Version**: 0.1.1  
+**Date**: January 2025
+
 ---
 
 ## Introduction
@@ -11,6 +16,14 @@ Functional Optimization is a paradigm shift in how we formulate and solve optimi
 **Every optimization problem is an energy landscape. The optimal solution is the state of minimum energy.**
 
 This document establishes the mathematical foundations of this paradigm, including the complete hierarchy from **Terms** through **Ensemble**.
+
+> **Note**: This document uses conceptual terminology. For the normative YAML specification, see [YAML_SPEC.md](YAML_SPEC.md). Terminology mapping:
+> - **Static term** → `type: analytic` in YAML
+> - **Functional term** → `type: functional` in YAML  
+> - **Dense interaction** → `type: all_indices` with `ranges:` in YAML
+> - **Sparse interaction** → `type: sparse` in YAML
+> - **Expression** → `expr:` in YAML
+> - **Aggregator** → `agg:` in YAML
 
 ---
 
@@ -235,13 +248,18 @@ Block-sparse structure in $Q$.
 
 These specify variable groups for constraint encoding.
 
-#### One-Hot Groups
+#### Groups (One-Hot, At-Most-One, Exactly-K)
 
-$$\{(i,k) : k \in \text{group}_i\}$$
+$$\{G_1, G_2, \ldots, G_K\}$$ where each $G_k$ is a set of indices.
 
-Apply one-hot constraint term to each group.
+Apply constraint term to each group. The term decides the constraint type:
+- **Exactly-one**: $(\sum_{i \in G_k} x_i - 1)^2$
+- **At-most-one**: $\sum_{i < j, i,j \in G_k} x_i x_j$
+- **Exactly-K**: $(\sum_{i \in G_k} x_i - K)^2$
 
-**Use cases**: Assignment, scheduling, routing.
+**Use cases**: Assignment, scheduling, routing, bin packing candidate selection.
+
+> **YAML**: `type: groups` with `groups:` (data reference or inline) and `bind:` for index symbol.
 
 ---
 
@@ -289,14 +307,15 @@ Specified hyperedges only.
 
 ### 4.5 FEBO v1 Required Interaction Structures
 
-| Interaction Structure | Required |
-|-----------------------|----------|
-| Sparse (edge list) | ✅ |
-| Dense | ✅ |
-| Low-Rank | ✅ |
-| Laplacian / Neighbor | ✅ |
-| Constraint-Induced | ✅ |
-| Higher-Order (v2) | Optional |
+| Interaction Structure | Required | YAML `type:` |
+|-----------------------|----------|--------------|
+| Sparse (edge list) | ✅ | `sparse` |
+| All indices (dense) | ✅ | `all_indices` |
+| Low-Rank | ✅ | `low_rank` |
+| Laplacian / Neighbor | ✅ | `laplacian` |
+| Groups | ✅ | `groups` |
+| None (scalar) | ✅ | `none` |
+| Higher-Order (v2) | Optional | — |
 
 ---
 
@@ -408,7 +427,30 @@ $$A_{\mathbb{E}} = \mathbb{E}_{\xi}[t(\xi)]$$
 
 ---
 
-### 5.5 FEBO v1 Required Aggregators
+### 5.5 Indexed Reductions
+
+Within a term expression, **indexed reductions** allow summing or multiplying over a bound index:
+
+$$\text{sum}_p(y_p) = \sum_{p \in \text{domain}} y_p$$
+$$\text{prod}_i(t_i) = \prod_{i \in \text{domain}} t_i$$
+
+**Reduction domains by interaction type:**
+
+| Interaction | Domain for $\text{sum}_p(\cdot)$ |
+|-------------|----------------------------------|
+| All indices | The declared range(s) |
+| Groups | Current group's index list |
+| Sparse | **Not defined** (parse error) |
+
+**Use cases**: 
+- Within groups: `(sum_p(y[p]) - 1)²` for exactly-one constraints
+- Within all_indices: `sum_i(cost[i] * x[i])` for linear objectives
+
+> **YAML**: `sum_p(...)`, `prod_i(...)` where the index must match a `bind:` symbol from the interaction.
+
+---
+
+### 5.6 FEBO v1 Required Aggregators
 
 | Aggregator | Symbol | Required |
 |------------|--------|----------|
@@ -454,7 +496,7 @@ Any aggregator can combine with any interaction structure and any term type:
 | Max | All $i$ | $f_i(x)$ | $\max_i f_i(x)$ | Minimax |
 | Max | Sparse | $w_{ij} x_i x_j$ | $\max_{(i,j)} w_{ij} x_i x_j$ | Robust QUBO |
 | LSE | All $i$ | $g_i(x)$ | $\frac{1}{\beta}\log\sum_i e^{\beta g_i}$ | Soft max |
-| Sum | One-hot groups | $(\sum_k x_{ik} - 1)^2$ | $\sum_i (\sum_k x_{ik} - 1)^2$ | Assignment |
+| Sum | One-hot groups | $(\sum_p y_p - 1)^2$ | $\sum_{\text{groups}} (\sum_{p \in G} y_p - 1)^2$ | Assignment |
 
 ### 6.3 Example Components in Detail
 
@@ -812,37 +854,39 @@ Level 5: Ensemble = Σ wₖ · Hₖ
 
 ### Terms
 
-| Term Type | Required |
-|-----------|----------|
-| Constant | ✅ |
-| Unary (static) | ✅ |
-| Unary (functional) | ✅ |
-| Binary (static) | ✅ |
-| Binary (functional) | ✅ |
-| Higher-order | Optional (v2) |
+| Term Type | Required | YAML `type:` |
+|-----------|----------|--------------|
+| Constant | ✅ | `constant` |
+| Unary (analytic) | ✅ | `analytic` |
+| Unary (functional) | ✅ | `functional` |
+| Binary (analytic) | ✅ | `analytic` |
+| Binary (functional) | ✅ | `functional` |
+| n-ary | ✅ | `analytic` or `functional` |
+| Higher-order | Optional (v2) | — |
 
 ### Interaction Structures
 
-| Interaction Structure | Required |
-|-----------------------|----------|
-| Sparse (edge list) | ✅ |
-| Dense | ✅ |
-| Low-Rank | ✅ |
-| Laplacian / Neighbor | ✅ |
-| Constraint-Induced | ✅ |
-| Higher-Order Hypergraph | Optional (v2) |
+| Interaction Structure | Required | YAML `type:` |
+|-----------------------|----------|--------------|
+| All indices | ✅ | `all_indices` |
+| Sparse (edge list) | ✅ | `sparse` |
+| Groups | ✅ | `groups` |
+| Low-Rank | ✅ | `low_rank` |
+| Laplacian / Neighbor | ✅ | `laplacian` |
+| None (scalar) | ✅ | `none` |
+| Higher-Order Hypergraph | Optional (v2) | — |
 
 ### Aggregators
 
-| Aggregator | Required |
-|------------|----------|
-| Sum | ✅ |
-| Prod | ✅ |
-| Max | ✅ |
-| Min | ✅ |
-| LogSumExp | ✅ |
-| LogProd | ✅ |
-| Integral | ✅ |
+| Aggregator | Required | YAML `agg:` |
+|------------|----------|-------------|
+| Sum | ✅ | `sum` |
+| Prod | ✅ | `prod` |
+| Max | ✅ | `max` |
+| Min | ✅ | `min` |
+| LogSumExp | ✅ | `logsumexp` |
+| LogProd | ✅ | `logprod` |
+| Integral | ✅ | — |
 
 ---
 

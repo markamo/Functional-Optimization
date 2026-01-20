@@ -2,6 +2,10 @@
 
 > **Normative specification for FEBO problem files**
 
+**Author**: Mark Amo-Boateng, PhD  
+**Affiliation**: Xtellix, Inc.  
+**Date**: January 2025
+
 ---
 
 ## 1. Overview

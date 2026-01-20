@@ -257,6 +257,8 @@ The FEBO specification is open. Implementations (parsers, converters, solvers) m
 
 FEBO is developed by [Xtellix, Inc.](https://xtellix.com)
 
+**Author**: Mark Amo-Boateng, PhD
+
 ---
 
 <p align="center">

@@ -2,6 +2,11 @@
 
 > **From Mathematical Building Blocks to Practical Specifications**
 
+**Author**: Mark Amo-Boateng, PhD  
+**Affiliation**: Xtellix, Inc.  
+**Version**: 0.1.1  
+**Date**: January 2025
+
 ---
 
 ## Introduction
@@ -87,7 +92,7 @@ $$H_{\text{total}}(x) = \frac{1}{4000}\sum_{i=1}^{n} x_i^2 - \prod_{i=1}^{n} \co
 ### FEBO Specification
 
 ```yaml
-febo_version: "0.1"
+febo_version: "0.1.1"
 name: griewank_benchmark
 
 # ============================================================
@@ -104,14 +109,14 @@ variables:
 # ============================================================
 terms:
   t_square:
-    type: static
+    type: analytic
     arity: unary
-    expression: "x[i]^2"
+    expr: "x[i]^2"
     
   t_cosine:
     type: functional
     arity: unary
-    expression: "cos(x[i] / sqrt(i))"
+    expr: "cos(x[i] / sqrt(i))"
     
   t_const:
     type: constant
@@ -124,6 +129,7 @@ interactions:
   all_i:
     type: all_indices
     range: [1, n]
+    bind: i
 
 # ============================================================
 # LEVEL 3: COMPONENTS
@@ -132,12 +138,12 @@ components:
   c_quadratic:
     term: t_square
     interaction: all_i
-    aggregator: sum
+    agg: sum
     
   c_product:
     term: t_cosine
     interaction: all_i
-    aggregator: prod        # KEY: non-Sum aggregator
+    agg: prod        # KEY: non-Sum aggregator
     
   c_constant:
     term: t_const
@@ -149,25 +155,25 @@ hamiltonians:
   H_bowl:
     description: "Quadratic bowl pulling toward origin"
     components:
-      - {component: c_quadratic, alpha: 0.00025}
+      - {use: c_quadratic, alpha: 0.00025}
     
   H_oscillation:
     description: "Oscillatory landscape creating local minima"
     components:
-      - {component: c_product, alpha: -1.0}
+      - {use: c_product, alpha: -1.0}
     
   H_offset:
     description: "Constant offset"
     components:
-      - {component: c_constant, alpha: 1.0}
+      - {use: c_constant, alpha: 1.0}
 
 # ============================================================
 # LEVEL 5: ENSEMBLE
 # ============================================================
 ensemble:
-  - {hamiltonian: H_bowl, weight: 1.0}
-  - {hamiltonian: H_oscillation, weight: 1.0}
-  - {hamiltonian: H_offset, weight: 1.0}
+  - {use: H_bowl, weight: 1.0}
+  - {use: H_oscillation, weight: 1.0}
+  - {use: H_offset, weight: 1.0}
 ```
 
 ### Auditability at Solution
@@ -281,7 +287,7 @@ $$H_{\text{total}} = w_1 H_{\text{MHD}} + w_2 H_{\text{performance}} + w_3 H_{\t
 ### FEBO Specification
 
 ```yaml
-febo_version: "0.1"
+febo_version: "0.1.1"
 name: fusion_plasma_control
 
 variables:
@@ -309,102 +315,104 @@ terms:
   t_growth:
     type: functional
     arity: n-ary
-    expression: "mhd_growth_rate(k, coil_currents, density_profile, temperature_profile)"
+    expr: "mhd_growth_rate(k, coil_currents, density_profile, temperature_profile)"
     
   t_confinement:
     type: functional
-    expression: "-confinement_time(density_profile, temperature_profile, heating_power)"
+    expr: "-confinement_time(density_profile, temperature_profile, heating_power)"
     
   t_power_balance:
     type: functional
-    expression: "(P_input - P_loss - P_radiation)^2"
+    expr: "(P_input - P_loss - P_radiation)^2"
     
   t_coil_stress:
     type: functional
-    expression: "stress(coil_currents[c]) / max_stress[c]"
+    expr: "stress(coil_currents[c]) / max_stress[c]"
     
   t_safety_factor:
     type: functional
-    expression: "max(0, q_min - safety_factor(r))^2"
+    expr: "max(0, q_min - safety_factor(r))^2"
 
 interactions:
   mhd_modes:
-    type: index_set
-    indices: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]  # m,n mode pairs
+    type: all_indices
+    range: [1, 10]
+    bind: k
     
   coil_set:
-    type: index_set
-    indices: [1, 2, ..., 18]
+    type: all_indices
+    range: [1, 18]
+    bind: c
     
   radial_grid:
-    type: grid
-    range: [0, 1]
-    points: 100
+    type: all_indices
+    range: [1, 100]
+    bind: r
 
 components:
   c_mhd:
     term: t_growth
     interaction: mhd_modes
-    aggregator: max           # WORST-CASE mode
+    agg: max           # WORST-CASE mode
     
   c_confinement:
     term: t_confinement
     
   c_power:
     term: t_power_balance
-    aggregator: sum
+    agg: sum
     
   c_coils:
     term: t_coil_stress
     interaction: coil_set
-    aggregator: sum
+    agg: sum
     
   c_safety:
     term: t_safety_factor
     interaction: radial_grid
-    aggregator: sum
+    agg: sum
 
 hamiltonians:
   H_MHD:
     type: subsystem
     description: "MHD stability - worst mode must be stable"
     components:
-      - {component: c_mhd, alpha: 1.0}
+      - {use: c_mhd, alpha: 1.0}
     subsystem_vars: [coil_currents, density_profile, temperature_profile]
       
   H_performance:
     type: subsystem
     description: "Maximize energy confinement time"
     components:
-      - {component: c_confinement, alpha: 1.0}
+      - {use: c_confinement, alpha: 1.0}
     subsystem_vars: [density_profile, temperature_profile, heating_power]
       
   H_power:
     type: coupling              # COUPLING: links heating to transport
     description: "Power balance between subsystems"
     components:
-      - {component: c_power, alpha: 1.0}
+      - {use: c_power, alpha: 1.0}
     couples: [heating_power, density_profile, temperature_profile]
       
   H_engineering:
     type: subsystem
     description: "Hardware constraints"
     components:
-      - {component: c_coils, alpha: 1.0}
+      - {use: c_coils, alpha: 1.0}
     subsystem_vars: [coil_currents]
       
   H_safety:
     type: subsystem
     description: "Safety factor profile"
     components:
-      - {component: c_safety, alpha: 1.0}
+      - {use: c_safety, alpha: 1.0}
 
 ensemble:
-  - {hamiltonian: H_MHD, weight: 1000.0}        # Critical: stability
-  - {hamiltonian: H_performance, weight: 1.0}
-  - {hamiltonian: H_power, weight: 100.0}       # Coupling
-  - {hamiltonian: H_engineering, weight: 10.0}
-  - {hamiltonian: H_safety, weight: 100.0}
+  - {use: H_MHD, weight: 1000.0}        # Critical: stability
+  - {use: H_performance, weight: 1.0}
+  - {use: H_power, weight: 100.0}       # Coupling
+  - {use: H_engineering, weight: 10.0}
+  - {use: H_safety, weight: 100.0}
 
 constraints:
   time_budget: 0.001  # 1ms max solve time for real-time control
@@ -523,7 +531,7 @@ $$H_{\text{total}} = H_{\text{cost}} + H_{\text{physics}} + H_{\text{storage}} +
 ### FEBO Specification
 
 ```yaml
-febo_version: "0.1"
+febo_version: "0.1.1"
 name: power_grid_optimization
 
 variables:
@@ -550,123 +558,128 @@ variables:
 
 terms:
   t_gen_cost:
-    expression: "cost[g] * generation[g,t]"
+    expr: "cost[g] * generation[g,t]"
     
   t_startup_cost:
-    expression: "startup[g] * max(0, commitment[g,t] - commitment[g,t-1])"
+    expr: "startup[g] * max(0, commitment[g,t] - commitment[g,t-1])"
     
   t_power_balance:
-    expression: "(sum_g(generation[g,t]) - sum_d(demand[d,t]) - losses[t])^2"
+    expr: "(sum_g(generation[g,t]) - sum_d(demand[d,t]) - losses[t])^2"
     
   t_line_violation:
-    expression: "max(0, abs(flow[l,t]) - capacity[l])^2"
+    expr: "max(0, abs(flow[l,t]) - capacity[l])^2"
     
   t_contingency_violation:
     type: functional
-    expression: "max_violation_after_contingency(c, t)"
+    expr: "max_violation_after_contingency(c, t)"
     
   t_ramp:
-    expression: "max(0, abs(generation[g,t] - generation[g,t-1]) - ramp_rate[g])^2"
+    expr: "max(0, abs(generation[g,t] - generation[g,t-1]) - ramp_rate[g])^2"
     
   t_binary:
-    expression: "(commitment[g,t] * (1 - commitment[g,t]))^2"
+    expr: "(commitment[g,t] * (1 - commitment[g,t]))^2"
 
 interactions:
   all_generators:
-    type: index_set
-    size: 500
+    type: all_indices
+    range: [1, 500]
+    bind: g
     
   all_lines:
-    type: index_set
-    size: 50000
+    type: all_indices
+    range: [1, 50000]
+    bind: l
     
   all_buses:
-    type: index_set
-    size: 10000
+    type: all_indices
+    range: [1, 10000]
+    bind: b
     
   all_time:
-    type: index_set
-    size: 168
+    type: all_indices
+    range: [1, 168]
+    bind: t
     
   contingencies:
-    type: index_set
-    size: 50000          # N-1 for each line
+    type: all_indices
+    range: [1, 50000]
+    bind: c
 
 components:
   c_gen_cost:
     term: t_gen_cost
     interaction: [all_generators, all_time]
-    aggregator: sum
+    agg: sum
     
   c_startup:
     term: t_startup_cost
     interaction: [all_generators, all_time]
-    aggregator: sum
+    agg: sum
     
   c_balance:
     term: t_power_balance
     interaction: [all_buses, all_time]
-    aggregator: sum
+    agg: sum
     
   c_thermal:
     term: t_line_violation
     interaction: [all_lines, all_time]
-    aggregator: sum
+    agg: sum
     
   c_n1_security:
     term: t_contingency_violation
     interaction: [contingencies, all_time]
-    aggregator: max         # WORST-CASE contingency
+    agg: max         # WORST-CASE contingency
     
   c_ramp:
     term: t_ramp
     interaction: [all_generators, all_time]
-    aggregator: sum
+    agg: sum
     
   c_binary:
     term: t_binary
     interaction: [all_generators, all_time]
-    aggregator: sum
+    agg: sum
 
 hamiltonians:
   H_cost:
     type: subsystem
     description: "Economic cost (objective)"
     components:
-      - {component: c_gen_cost, alpha: 1.0}
-      - {component: c_startup, alpha: 1.0}
+      - {use: c_gen_cost, alpha: 1.0}
+      - {use: c_startup, alpha: 1.0}
       
   H_physics:
     type: coupling
     description: "Power balance links generation to demand"
     components:
-      - {component: c_balance, alpha: 1.0}
-      - {component: c_thermal, alpha: 1.0}
+      - {use: c_balance, alpha: 1.0}
+      - {use: c_thermal, alpha: 1.0}
       
   H_generators:
     type: subsystem
     description: "Generator operational constraints"
     components:
-      - {component: c_ramp, alpha: 1.0}
+      - {use: c_ramp, alpha: 1.0}
       
   H_security:
     type: coupling
     description: "N-1 contingency security (worst-case failure)"
     components:
-      - {component: c_n1_security, alpha: 1.0}
+      - {use: c_n1_security, alpha: 1.0}
       
   H_integrality:
     type: subsystem
     description: "Binary enforcement for commitment"
     components:
-      - {component: c_binary, alpha: 1.0}
+      - {use: c_binary, alpha: 1.0}
 
 ensemble:
-  - {hamiltonian: H_cost, weight: 1.0}
-  - {hamiltonian: H_physics, weight: 10000.0}
-  - {hamiltonian: H_generators, weight: 1000.0}
-  - {hamiltonian: H_security, weight: 10000.0}
-  - {hamiltonian: H_integrality, weight: 100000.0}
+  - {use: H_cost, weight: 1.0}
+  - {use: H_physics, weight: 10000.0}
+  - {use: H_generators, weight: 1000.0}
+  - {use: H_security, weight: 10000.0}
+  - {use: H_integrality, weight: 100000.0}
 ```
 
 ### Auditability Example
@@ -783,7 +796,7 @@ $$H_{\text{total}} = w_1 H_{\text{efficacy}} + w_2 H_{\text{safety}} + w_3 H_{\t
 ### FEBO Specification
 
 ```yaml
-febo_version: "0.1"
+febo_version: "0.1.1"
 name: drug_discovery_pipeline
 
 variables:
@@ -805,72 +818,73 @@ variables:
 terms:
   t_binding:
     type: functional
-    expression: "docking_score(molecule, conformation, target_protein)"
+    expr: "docking_score(molecule, conformation, target_protein)"
     model: "autodock_vina"
     
   t_off_target:
     type: functional
-    expression: "docking_score(molecule, conformation, off_target[j])"
+    expr: "docking_score(molecule, conformation, off_target[j])"
     
   t_toxicity:
     type: functional
-    expression: "tox_model(molecule, endpoint[j])"
+    expr: "tox_model(molecule, endpoint[j])"
     model: "tox21_ensemble"
     
   t_lipinski:
     type: functional
-    expression: "lipinski_violation(molecule, rule[k])"
+    expr: "lipinski_violation(molecule, rule[k])"
     
   t_admet:
     type: functional
-    expression: "admet_deviation(molecule, property[p])"
+    expr: "admet_deviation(molecule, property[p])"
     
   t_synthetic:
     type: functional
-    expression: "sa_score(molecule)"
+    expr: "sa_score(molecule)"
     
   t_novelty:
     type: functional
-    expression: "1 - max_tanimoto(molecule, prior_art_db)"
+    expr: "1 - max_tanimoto(molecule, prior_art_db)"
 
 interactions:
   off_targets:
-    type: index_set
-    proteins: ["hERG", "CYP3A4", "CYP2D6", "P-gp", ...]
-    size: 50
+    type: all_indices
+    range: [1, 50]
+    bind: j
     
   tox_endpoints:
-    type: index_set
-    endpoints: ["hepatotox", "cardiotox", "nephrotox", "mutagenicity", ...]
-    size: 12
+    type: all_indices
+    range: [1, 12]
+    bind: j
     
   lipinski_rules:
-    type: index_set
-    rules: ["MW", "LogP", "HBD", "HBA", "TPSA"]
+    type: all_indices
+    range: [1, 5]
+    bind: k
 
 components:
   c_binding:
     term: t_binding
-    aggregator: min              # Best pose
+    agg: min              # Best pose
     
   c_selectivity:
     term: t_off_target
     interaction: off_targets
-    aggregator: max              # Worst off-target
+    agg: max              # Worst off-target
     
   c_toxicity:
     term: t_toxicity
     interaction: tox_endpoints
-    aggregator: max              # Worst toxicity
+    agg: max              # Worst toxicity
     
   c_lipinski:
     term: t_lipinski
     interaction: lipinski_rules
-    aggregator: sum
+    agg: sum
     
   c_admet:
     term: t_admet
-    aggregator: sum
+    agg: sum
     
   c_synthesis:
     term: t_synthetic
@@ -882,31 +896,31 @@ hamiltonians:
   H_efficacy:
     description: "Drug-target interaction"
     components:
-      - {component: c_binding, alpha: 1.0}
-      - {component: c_selectivity, alpha: -0.5}  # Penalize off-target
+      - {use: c_binding, alpha: 1.0}
+      - {use: c_selectivity, alpha: -0.5}  # Penalize off-target
       
   H_safety:
     description: "Safety profile"
     components:
-      - {component: c_toxicity, alpha: 10.0}  # High weight on safety
+      - {use: c_toxicity, alpha: 10.0}  # High weight on safety
       
   H_druggability:
     description: "Drug-likeness"
     components:
-      - {component: c_lipinski, alpha: 1.0}
-      - {component: c_admet, alpha: 1.0}
+      - {use: c_lipinski, alpha: 1.0}
+      - {use: c_admet, alpha: 1.0}
       
   H_practical:
     description: "Practical considerations"
     components:
-      - {component: c_synthesis, alpha: 0.5}
-      - {component: c_novelty, alpha: -1.0}   # Reward novelty
+      - {use: c_synthesis, alpha: 0.5}
+      - {use: c_novelty, alpha: -1.0}   # Reward novelty
 
 ensemble:
-  - {hamiltonian: H_efficacy, weight: 1.0}
-  - {hamiltonian: H_safety, weight: 2.0}
-  - {hamiltonian: H_druggability, weight: 0.5}
-  - {hamiltonian: H_practical, weight: 0.3}
+  - {use: H_efficacy, weight: 1.0}
+  - {use: H_safety, weight: 2.0}
+  - {use: H_druggability, weight: 0.5}
+  - {use: H_practical, weight: 0.3}
 ```
 
 ### Auditability Example
@@ -1027,7 +1041,7 @@ $$H_{\text{total}} = H_{\text{cost}} + H_{\text{service}} + H_{\text{physics}} +
 ### FEBO Specification
 
 ```yaml
-febo_version: "0.1"
+febo_version: "0.1.1"
 name: global_supply_chain
 
 variables:
@@ -1049,130 +1063,131 @@ variables:
 
 terms:
   t_production_cost:
-    expression: "unit_cost[f,p] * production[f,p,t]"
+    expr: "unit_cost[f,p] * production[f,p,t]"
     
   t_holding_cost:
-    expression: "holding_cost[w,p] * inventory[w,p,t]"
+    expr: "holding_cost[w,p] * inventory[w,p,t]"
     
   t_transport_cost:
-    expression: "lane_cost[i,j] * shipment[i,j,p,t]"
+    expr: "lane_cost[i,j] * shipment[i,j,p,t]"
     
   t_stockout:
-    expression: "stockout_penalty[c,p] * max(0, demand[c,p,t] - fulfillment[c,p,t])^2"
+    expr: "stockout_penalty[c,p] * max(0, demand[c,p,t] - fulfillment[c,p,t])^2"
     
   t_inventory_balance:
-    expression: "(inventory[w,p,t] - inventory[w,p,t-1] - inflow + outflow)^2"
+    expr: "(inventory[w,p,t] - inventory[w,p,t-1] - inflow + outflow)^2"
     
   t_echelon_link:
-    expression: "(output[tier1,p,t] - input[tier2,p,t])^2"
+    expr: "(output[tier1,p,t] - input[tier2,p,t])^2"
 
 interactions:
   all_production:
-    type: dense
-    dims: [facilities, products, time]
+    type: all_indices
+    ranges: {f: [1, 50], p: [1, 1000], t: [1, 52]}
     
   all_inventory:
-    type: dense
-    dims: [warehouses, products, time]
+    type: all_indices
+    ranges: {w: [1, 200], p: [1, 1000], t: [1, 52]}
     
   transport_lanes:
     type: sparse
-    edges: "valid_lanes.csv"    # Only valid O-D pairs
+    source: "valid_lanes.csv"
+    bind: [i, j]
     
   customer_demand:
-    type: dense
-    dims: [customers, products, time]
+    type: all_indices
+    ranges: {c: [1, 500], p: [1, 1000], t: [1, 52]}
 
 components:
   c_prod_cost:
     term: t_production_cost
     interaction: all_production
-    aggregator: sum
+    agg: sum
     
   c_hold_cost:
     term: t_holding_cost
     interaction: all_inventory
-    aggregator: sum
+    agg: sum
     
   c_trans_cost:
     term: t_transport_cost
     interaction: transport_lanes
-    aggregator: sum
+    agg: sum
     
   c_service:
     term: t_stockout
     interaction: customer_demand
-    aggregator: sum
+    agg: sum
     
   c_balance:
     term: t_inventory_balance
     interaction: all_inventory
-    aggregator: sum
+    agg: sum
     
   c_echelon_12:
     term: t_echelon_link
     interaction: {tier1: raw_suppliers, tier2: component_plants}
-    aggregator: sum
+    agg: sum
     
   c_echelon_23:
     term: t_echelon_link
     interaction: {tier1: component_plants, tier2: assembly_plants}
-    aggregator: sum
+    agg: sum
     
   c_echelon_34:
     term: t_echelon_link
     interaction: {tier1: assembly_plants, tier2: distribution_centers}
-    aggregator: sum
+    agg: sum
 
 hamiltonians:
   H_cost:
     type: subsystem
     description: "Total operating cost"
     components:
-      - {component: c_prod_cost, alpha: 1.0}
-      - {component: c_hold_cost, alpha: 1.0}
-      - {component: c_trans_cost, alpha: 1.0}
+      - {use: c_prod_cost, alpha: 1.0}
+      - {use: c_hold_cost, alpha: 1.0}
+      - {use: c_trans_cost, alpha: 1.0}
       
   H_service:
     type: subsystem
     description: "Customer service level"
     components:
-      - {component: c_service, alpha: 1.0}
+      - {use: c_service, alpha: 1.0}
       
   H_physics:
     type: subsystem
     description: "Inventory balance constraints"
     components:
-      - {component: c_balance, alpha: 1.0}
+      - {use: c_balance, alpha: 1.0}
       
   H_raw_component:
     type: coupling
     description: "Raw → Component echelon coupling"
     components:
-      - {component: c_echelon_12, alpha: 1.0}
+      - {use: c_echelon_12, alpha: 1.0}
     couples: [raw_materials, components]
       
   H_component_product:
     type: coupling
     description: "Component → Product echelon coupling"
     components:
-      - {component: c_echelon_23, alpha: 1.0}
+      - {use: c_echelon_23, alpha: 1.0}
     couples: [components, products]
       
   H_product_distribution:
     type: coupling
     description: "Product → Distribution echelon coupling"
     components:
-      - {component: c_echelon_34, alpha: 1.0}
+      - {use: c_echelon_34, alpha: 1.0}
     couples: [products, distribution]
 
 ensemble:
-  - {hamiltonian: H_cost, weight: 1.0}
-  - {hamiltonian: H_service, weight: 10.0}
-  - {hamiltonian: H_physics, weight: 10000.0}
-  - {hamiltonian: H_raw_component, weight: 10000.0}
-  - {hamiltonian: H_component_product, weight: 10000.0}
-  - {hamiltonian: H_product_distribution, weight: 10000.0}
+  - {use: H_cost, weight: 1.0}
+  - {use: H_service, weight: 10.0}
+  - {use: H_physics, weight: 10000.0}
+  - {use: H_raw_component, weight: 10000.0}
+  - {use: H_component_product, weight: 10000.0}
+  - {use: H_product_distribution, weight: 10000.0}
 ```
 
 ### Auditability Example
@@ -1285,7 +1300,7 @@ Manage a fleet of autonomous vehicles in real-time:
 ### FEBO Specification
 
 ```yaml
-febo_version: "0.1"
+febo_version: "0.1.1"
 name: autonomous_fleet_management
 
 variables:
@@ -1312,111 +1327,113 @@ variables:
 
 terms:
   t_wait_time:
-    expression: "(pickup_time[v,r] - request_time[r])^2"
+    expr: "(pickup_time[v,r] - request_time[r])^2"
     
   t_trip_distance:
-    expression: "distance(vehicle_pos[v], pickup_loc[r]) + trip_distance[r]"
+    expr: "distance(vehicle_pos[v], pickup_loc[r]) + trip_distance[r]"
     
   t_battery_violation:
-    expression: "max(0, B_min - battery[v,t])^2"
+    expr: "max(0, B_min - battery[v,t])^2"
     
   t_collision_risk:
     type: functional
-    expression: "collision_probability(route[v1,t], route[v2,t])"
+    expr: "collision_probability(route[v1,t], route[v2,t])"
     
   t_double_assignment:
-    expression: "(sum_v(assignment[v,r]) - 1)^2"
+    expr: "(sum_v(assignment[v,r]) - 1)^2"
     
   t_binary_enforce:
-    expression: "assignment[v,r] * (1 - assignment[v,r])"
+    expr: "assignment[v,r] * (1 - assignment[v,r])"
 
 interactions:
   all_assignments:
-    type: dense
-    dims: [vehicles, requests]
+    type: all_indices
+    ranges: {v: [1, 1000], r: [1, 500]}
     
   all_vehicles_time:
-    type: dense
-    dims: [vehicles, time]
+    type: all_indices
+    ranges: {v: [1, 1000], t: [1, 100]}
     
   vehicle_pairs:
     type: sparse
-    description: "Nearby vehicle pairs for collision checking"
+    source: "nearby_pairs.csv"
+    bind: [v1, v2]
     
   all_requests:
-    type: index_set
-    size: 500
+    type: all_indices
+    range: [1, 500]
+    bind: r
 
 components:
   c_wait:
     term: t_wait_time
     interaction: all_assignments
-    aggregator: sum
+    agg: sum
     
   c_distance:
     term: t_trip_distance
     interaction: all_assignments
-    aggregator: sum
+    agg: sum
     
   c_battery:
     term: t_battery_violation
     interaction: all_vehicles_time
-    aggregator: min            # WORST battery level
+    agg: min            # WORST battery level
     
   c_collision:
     term: t_collision_risk
     interaction: vehicle_pairs
-    aggregator: max            # WORST collision risk
+    agg: max            # WORST collision risk
     
   c_single_assign:
     term: t_double_assignment
     interaction: all_requests
-    aggregator: sum
+    agg: sum
     
   c_binary:
     term: t_binary_enforce
     interaction: all_assignments
-    aggregator: sum
+    agg: sum
 
 hamiltonians:
   H_service:
     type: subsystem
     description: "Customer wait time"
     components:
-      - {component: c_wait, alpha: 1.0}
+      - {use: c_wait, alpha: 1.0}
       
   H_efficiency:
     type: subsystem
     description: "Fleet efficiency (minimize distance)"
     components:
-      - {component: c_distance, alpha: 1.0}
+      - {use: c_distance, alpha: 1.0}
       
   H_battery:
     type: subsystem
     description: "Battery constraints"
     components:
-      - {component: c_battery, alpha: 1.0}
+      - {use: c_battery, alpha: 1.0}
       
   H_safety:
     type: coupling
     description: "Inter-vehicle collision avoidance"
     components:
-      - {component: c_collision, alpha: 1.0}
+      - {use: c_collision, alpha: 1.0}
     couples: [vehicle_1, vehicle_2]
       
   H_feasibility:
     type: subsystem
     description: "Assignment constraints"
     components:
-      - {component: c_single_assign, alpha: 1.0}
-      - {component: c_binary, alpha: 1.0}
+      - {use: c_single_assign, alpha: 1.0}
+      - {use: c_binary, alpha: 1.0}
 
 ensemble:
-  - {hamiltonian: H_service, weight: 1.0}
-  - {hamiltonian: H_efficiency, weight: 0.1}
-  - {hamiltonian: H_battery, weight: 100.0}
-  - {hamiltonian: H_safety, weight: 10000.0}
-  - {hamiltonian: H_feasibility, weight: 100000.0}
+  - {use: H_service, weight: 1.0}
+  - {use: H_efficiency, weight: 0.1}
+  - {use: H_battery, weight: 100.0}
+  - {use: H_safety, weight: 10000.0}
+  - {use: H_feasibility, weight: 100000.0}
 
 constraints:
   max_solve_time: 0.1  # 100ms for real-time
@@ -1551,7 +1568,7 @@ Optimize a portfolio with:
 ### FEBO Specification
 
 ```yaml
-febo_version: "0.1"
+febo_version: "0.1.1"
 name: portfolio_optimization
 
 variables:
@@ -1588,91 +1605,96 @@ data:
 
 terms:
   t_return:
-    expression: "expected_returns[i] * weights[i]"
+    expr: "expected_returns[i] * weights[i]"
     
   t_variance:
-    expression: "covariance[i,j] * weights[i] * weights[j]"
+    expr: "covariance[i,j] * weights[i] * weights[j]"
     
   t_scenario_return:
-    expression: "scenarios[i,s] * weights[i]"
+    expr: "scenarios[i,s] * weights[i]"
     
   t_drawdown:
     type: functional
-    expression: "drawdown(cumulative_return[t])"
+    expr: "drawdown(cumulative_return[t])"
     
   t_transaction:
     type: functional
-    expression: "transaction_cost(trades[i])"  # Nonlinear
+    expr: "transaction_cost(trades[i])"  # Nonlinear
     
   t_budget:
-    expression: "(sum(weights) - 1)^2"
+    expr: "(sum(weights) - 1)^2"
     
   t_sector_exposure:
-    expression: "max(0, sum(weights[i] for i in sector[s]) - limit[s])^2"
+    expr: "max(0, sum(weights[i] for i in sector[s]) - limit[s])^2"
     
   t_factor_exposure:
-    expression: "(sum(factor_loadings[i,f] * weights[i]) - target[f])^2"
+    expr: "(sum(factor_loadings[i,f] * weights[i]) - target[f])^2"
     
   t_esg_score:
-    expression: "max(0, min_esg - sum(esg[i] * weights[i]))^2"
+    expr: "max(0, min_esg - sum(esg[i] * weights[i]))^2"
     
   t_cardinality:
-    expression: "max(0, sum(active) - max_positions)^2"
+    expr: "max(0, sum(active) - max_positions)^2"
     
   t_active_link:
-    expression: "(weights[i]^2 - active[i] * weights[i]^2)^2"  # active=0 → weights=0
+    expr: "(weights[i]^2 - active[i] * weights[i]^2)^2"  # active=0 → weights=0
 
 interactions:
   all_assets:
-    type: index_set
-    size: 10000
+    type: all_indices
+    range: [1, 10000]
+    bind: i
     
   asset_pairs:
-    type: dense_quadratic
-    dims: [10000, 10000]
-    storage: low_rank       # Factor model: Σ = FΛF' + D
+    type: all_indices
+    ranges: {i: [1, 10000], j: [1, 10000]}
+    # Low-rank storage handled by data section
     
   scenarios:
-    type: index_set
-    size: 1000
+    type: all_indices
+    range: [1, 1000]
+    bind: s
     
   time_periods:
-    type: index_set
-    size: 252               # Trading days
+    type: all_indices
+    range: [1, 252]
+    bind: t
     
   sectors:
-    type: index_set
-    size: 11
+    type: all_indices
+    range: [1, 11]
+    bind: s
     
   factors:
-    type: index_set
-    size: 50
+    type: all_indices
+    range: [1, 50]
+    bind: f
 
 components:
   c_return:
     term: t_return
     interaction: all_assets
-    aggregator: sum
+    agg: sum
     
   c_variance:
     term: t_variance
     interaction: asset_pairs
-    aggregator: sum
+    agg: sum
     
   c_cvar:
     term: t_scenario_return
     interaction: [all_assets, scenarios]
-    aggregator: cvar_95      # Bottom 5% mean
+    agg: cvar_95      # Bottom 5% mean
     
   c_drawdown:
     term: t_drawdown
     interaction: time_periods
-    aggregator: max          # WORST drawdown
+    agg: max          # WORST drawdown
     
   c_cost:
     term: t_transaction
     interaction: all_assets
-    aggregator: sum
+    agg: sum
     
   c_budget:
     term: t_budget
@@ -1680,12 +1702,12 @@ components:
   c_sectors:
     term: t_sector_exposure
     interaction: sectors
-    aggregator: sum
+    agg: sum
     
   c_factors:
     term: t_factor_exposure
     interaction: factors
-    aggregator: sum
+    agg: sum
     
   c_esg:
     term: t_esg_score
@@ -1696,70 +1718,70 @@ components:
   c_active:
     term: t_active_link
     interaction: all_assets
-    aggregator: sum
+    agg: sum
 
 hamiltonians:
   H_return:
     type: subsystem
     description: "Expected return (maximize → negative weight)"
     components:
-      - {component: c_return, alpha: -1.0}
+      - {use: c_return, alpha: -1.0}
       
   H_risk:
     type: subsystem
     description: "Risk measures"
     components:
-      - {component: c_variance, alpha: 1.0}
-      - {component: c_cvar, alpha: 0.5}
-      - {component: c_drawdown, alpha: 0.3}
+      - {use: c_variance, alpha: 1.0}
+      - {use: c_cvar, alpha: 0.5}
+      - {use: c_drawdown, alpha: 0.3}
       
   H_cost:
     type: subsystem
     description: "Transaction costs"
     components:
-      - {component: c_cost, alpha: 1.0}
+      - {use: c_cost, alpha: 1.0}
       
   H_budget:
     type: subsystem
     description: "Fully invested constraint"
     components:
-      - {component: c_budget, alpha: 1.0}
+      - {use: c_budget, alpha: 1.0}
       
   H_sectors:
     type: subsystem
     description: "Sector exposure limits"
     components:
-      - {component: c_sectors, alpha: 1.0}
+      - {use: c_sectors, alpha: 1.0}
       
   H_factors:
     type: coupling
     description: "Factor exposure targets"
     components:
-      - {component: c_factors, alpha: 1.0}
+      - {use: c_factors, alpha: 1.0}
     couples: [assets_via_factors]
       
   H_esg:
     type: subsystem
     description: "ESG compliance"
     components:
-      - {component: c_esg, alpha: 1.0}
+      - {use: c_esg, alpha: 1.0}
       
   H_cardinality:
     type: subsystem
     description: "Position count limits"
     components:
-      - {component: c_cardinality, alpha: 1.0}
-      - {component: c_active, alpha: 1.0}
+      - {use: c_cardinality, alpha: 1.0}
+      - {use: c_active, alpha: 1.0}
 
 ensemble:
-  - {hamiltonian: H_return, weight: 1.0}
-  - {hamiltonian: H_risk, weight: 0.5}        # Risk aversion
-  - {hamiltonian: H_cost, weight: 0.1}
-  - {hamiltonian: H_budget, weight: 10000.0}
-  - {hamiltonian: H_sectors, weight: 1000.0}
-  - {hamiltonian: H_factors, weight: 100.0}
-  - {hamiltonian: H_esg, weight: 1000.0}
-  - {hamiltonian: H_cardinality, weight: 100.0}
+  - {use: H_return, weight: 1.0}
+  - {use: H_risk, weight: 0.5}        # Risk aversion
+  - {use: H_cost, weight: 0.1}
+  - {use: H_budget, weight: 10000.0}
+  - {use: H_sectors, weight: 1000.0}
+  - {use: H_factors, weight: 100.0}
+  - {use: H_esg, weight: 1000.0}
+  - {use: H_cardinality, weight: 100.0}
 ```
 
 ### Auditability Example
